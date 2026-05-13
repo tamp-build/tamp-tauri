@@ -85,7 +85,7 @@ The sidecar staging step that was previously documented in `BUILD_NOTES.md` and 
 
 ### What's deferred
 
-`tauri signer generate` and `tauri signer sign` are intentionally NOT typed in 0.1.0 — both verbs need to pass a signing-key password to the spawned process, which requires `Tamp.Tauri.V2` on `Tamp.Core`'s `InternalsVisibleTo` list (to safely `Reveal()` the password into `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`). Filed as TAM-190 for a 0.2.0 wave when an adopter actually needs to sign updater artifacts. Until then, `Tauri.Raw(tool, "signer", "generate", ...)` with adopter-managed env covers the case.
+`tauri signer generate` and `tauri signer sign` are not yet typed in 0.1.0 — filed as **TAM-190** for a 0.2.0 wave when an adopter actually needs to sign updater artifacts. (Originally this needed `Tamp.Tauri.V2` on `Tamp.Core`'s `InternalsVisibleTo` list to safely `Reveal()` the password into `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`; as of Tamp.Core **1.6.0** `Secret.Reveal()` is public and TAMP004-gated, so the deferral now is just about the unwritten verb surface.) Until then, `Tauri.Raw(tool, "signer", "generate", ...)` with adopter-managed env covers the case.
 
 ## `ExternalBinPath` — the load-bearing helper
 
