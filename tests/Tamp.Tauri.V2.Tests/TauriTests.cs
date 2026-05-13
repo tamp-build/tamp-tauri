@@ -51,6 +51,45 @@ public sealed class TauriTests
     }
 
     [Fact]
+    public void EnableCustomProtocol_Adds_Qualified_Feature()
+    {
+        var plan = Tauri.Build(FakeTool(), s => s.EnableCustomProtocol());
+        Assert.Equal("tauri/custom-protocol",
+            plan.Arguments[IndexOf(plan.Arguments, "--features") + 1]);
+    }
+
+    [Fact]
+    public void EnableCustomProtocol_Is_Idempotent()
+    {
+        var plan = Tauri.Build(FakeTool(), s => s
+            .EnableCustomProtocol()
+            .EnableCustomProtocol()
+            .EnableCustomProtocol());
+        // Single feature, not "tauri/custom-protocol,tauri/custom-protocol,..."
+        Assert.Equal("tauri/custom-protocol",
+            plan.Arguments[IndexOf(plan.Arguments, "--features") + 1]);
+    }
+
+    [Fact]
+    public void EnableCustomProtocol_Composes_With_Other_Features()
+    {
+        var plan = Tauri.Build(FakeTool(), s => s
+            .AddFeature("updater")
+            .EnableCustomProtocol()
+            .AddFeature("devtools"));
+        // Order is preserved; the qualified feature lands in the middle.
+        Assert.Equal("updater,tauri/custom-protocol,devtools",
+            plan.Arguments[IndexOf(plan.Arguments, "--features") + 1]);
+    }
+
+    [Fact]
+    public void EnableCustomProtocol_Returns_Same_Instance_For_Chaining()
+    {
+        var s = new TauriBuildSettings();
+        Assert.Same(s, s.EnableCustomProtocol());
+    }
+
+    [Fact]
     public void Build_Bin_Plus_Runner()
     {
         var plan = Tauri.Build(FakeTool(), s => s.SetBin("dasbook2").SetRunner("cargo-tauri"));
@@ -102,6 +141,111 @@ public sealed class TauriTests
     public void Raw_Rejects_Empty_Args()
     {
         Assert.Throws<ArgumentException>(() => Tauri.Raw(FakeTool()));
+    }
+
+    // ---- Signer (TAM-190) ----
+
+    [Fact]
+    public void Signer_Generate_Requires_WriteKeysPath()
+    {
+        Assert.Throws<InvalidOperationException>(() =>
+            Tauri.Signer.Generate(FakeTool(), s => { }).Arguments.ToList());
+    }
+
+    [Fact]
+    public void Signer_Generate_Emits_W_Flag()
+    {
+        var plan = Tauri.Signer.Generate(FakeTool(), s => s
+            .SetWriteKeysPath("./keys/updater.key"));
+        Assert.Equal(new[] { "signer", "generate", "-w", "./keys/updater.key" }, plan.Arguments.Take(4));
+    }
+
+    [Fact]
+    public void Signer_Generate_Force_Flag()
+    {
+        var plan = Tauri.Signer.Generate(FakeTool(), s => s
+            .SetWriteKeysPath("./keys/updater.key").SetForce());
+        Assert.Contains("-f", plan.Arguments);
+    }
+
+    [Fact]
+    public void Signer_Generate_Password_Routes_To_Env_Var_Not_Argv()
+    {
+        var pwd = new Secret("updater-key-pwd", "s3cret-key-pwd");
+        var plan = Tauri.Signer.Generate(FakeTool(), s => s
+            .SetWriteKeysPath("./keys/updater.key").SetPassword(pwd));
+        Assert.Equal("s3cret-key-pwd", plan.Environment["TAURI_SIGNING_PRIVATE_KEY_PASSWORD"]);
+        Assert.Contains(pwd, plan.Secrets);
+        // Critically: the password value must NEVER appear in the arg list.
+        Assert.DoesNotContain("s3cret-key-pwd", plan.Arguments);
+        Assert.DoesNotContain("-p", plan.Arguments);
+    }
+
+    [Fact]
+    public void Signer_Generate_Password_And_NoPassword_Mutually_Exclusive()
+    {
+        Assert.Throws<InvalidOperationException>(() =>
+            Tauri.Signer.Generate(FakeTool(), s => s
+                .SetWriteKeysPath("./k.key")
+                .SetPassword(new Secret("p", "x"))
+                .SetNoPassword()).Arguments.ToList());
+    }
+
+    [Fact]
+    public void Signer_Generate_NoPassword_Standalone()
+    {
+        var plan = Tauri.Signer.Generate(FakeTool(), s => s
+            .SetWriteKeysPath("./k.key").SetNoPassword());
+        Assert.Contains("--no-password", plan.Arguments);
+        // And no env var routed since no Secret was set.
+        Assert.False(plan.Environment.ContainsKey("TAURI_SIGNING_PRIVATE_KEY_PASSWORD"));
+    }
+
+    [Fact]
+    public void Signer_Sign_Requires_File()
+    {
+        Assert.Throws<InvalidOperationException>(() =>
+            Tauri.Signer.Sign(FakeTool(), s => s.SetPrivateKey("./k.key")).Arguments.ToList());
+    }
+
+    [Fact]
+    public void Signer_Sign_Requires_PrivateKey()
+    {
+        Assert.Throws<InvalidOperationException>(() =>
+            Tauri.Signer.Sign(FakeTool(), s => s.SetFile("DasBook.msi")).Arguments.ToList());
+    }
+
+    [Fact]
+    public void Signer_Sign_Emits_K_And_Positional_File()
+    {
+        var plan = Tauri.Signer.Sign(FakeTool(), s => s
+            .SetPrivateKey("./keys/updater.key")
+            .SetFile("DasBook.msi"));
+        Assert.Equal(new[] { "signer", "sign", "-k", "./keys/updater.key" }, plan.Arguments.Take(4));
+        // File is positional — comes after any flags, before --ci from base.
+        Assert.Contains("DasBook.msi", plan.Arguments);
+    }
+
+    [Fact]
+    public void Signer_Sign_Force_Flag()
+    {
+        var plan = Tauri.Signer.Sign(FakeTool(), s => s
+            .SetPrivateKey("k").SetFile("DasBook.msi").SetForce());
+        Assert.Contains("-f", plan.Arguments);
+    }
+
+    [Fact]
+    public void Signer_Sign_Password_Routes_To_Env_Not_Argv()
+    {
+        var pwd = new Secret("updater-key-pwd", "s3cret-key-pwd");
+        var plan = Tauri.Signer.Sign(FakeTool(), s => s
+            .SetPrivateKey("./keys/updater.key")
+            .SetFile("DasBook.msi")
+            .SetPassword(pwd));
+        Assert.Equal("s3cret-key-pwd", plan.Environment["TAURI_SIGNING_PRIVATE_KEY_PASSWORD"]);
+        Assert.Contains(pwd, plan.Secrets);
+        Assert.DoesNotContain("s3cret-key-pwd", plan.Arguments);
+        Assert.DoesNotContain("-p", plan.Arguments);
     }
 
     // ---- Common knobs ----

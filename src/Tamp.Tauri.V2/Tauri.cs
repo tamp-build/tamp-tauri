@@ -19,7 +19,21 @@ public static class Tauri
     public static CommandPlan Icon(Tool tool, Action<TauriIconSettings> configure)
         => Run<TauriIconSettings>(tool, configure);
 
-    // SignerGenerate / SignerSign deferred to 0.2.0 (TAM-190) — see comment in TauriSettingsBase.cs.
+    /// <summary>Nested verbs under <c>tauri signer</c> — minisign key generation + artifact signing for Tauri's updater (TAM-190, 0.2.0).</summary>
+    public static class Signer
+    {
+        /// <summary><c>tauri signer generate -w &lt;path&gt;</c> — produce a minisign key pair. Password is routed via the <c>TAURI_SIGNING_PRIVATE_KEY_PASSWORD</c> env var.</summary>
+        public static CommandPlan Generate(Tool tool, Action<TauriSignerGenerateSettings> configure)
+            => Run<TauriSignerGenerateSettings>(tool, configure);
+
+        /// <summary><c>tauri signer sign -k &lt;key&gt; &lt;file&gt;</c> — sign an artifact and write <c>&lt;file&gt;.sig</c> next to it. Password is routed via the <c>TAURI_SIGNING_PRIVATE_KEY_PASSWORD</c> env var.</summary>
+        public static CommandPlan Sign(Tool tool, Action<TauriSignerSignSettings> configure)
+            => Run<TauriSignerSignSettings>(tool, configure);
+
+        // Object-init overloads (Tamp 1.2.0+ pattern).
+        public static CommandPlan Generate(Tool tool, TauriSignerGenerateSettings settings) => Plan(tool, settings);
+        public static CommandPlan Sign(Tool tool, TauriSignerSignSettings settings) => Plan(tool, settings);
+    }
 
     /// <summary><c>tauri migrate</c> — migrate a Tauri v1 project to v2.</summary>
     public static CommandPlan Migrate(Tool tool, Action<TauriMigrateSettings>? configure = null)

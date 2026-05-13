@@ -31,7 +31,7 @@ class Build : TampBuild
 {
     public static int Main(string[] args) => Execute<Build>(args);
 
-    [FromPath("cargo")] readonly Tool Cargo = null!;
+    [FromPath("cargo")] readonly Tool CargoBin = null!;
     [FromNodeModules("tauri")] readonly Tool TauriCli = null!;
 
     AbsolutePath ServiceCrate => RootDirectory / "dasbook-service";
@@ -41,7 +41,7 @@ class Build : TampBuild
 
     Target BuildService => _ => _
         .Description("[Build] Compile dasbook-service for the Tauri sidecar slot")
-        .Executes(() => Cargo.Build(s => s
+        .Executes(() => Cargo.Build(CargoBin, s => s
             .SetWorkingDirectory(ServiceCrate)
             .SetRelease()
             .SetTarget(TargetTriple)
@@ -54,7 +54,7 @@ class Build : TampBuild
         {
             var built = ServiceCrate / "target" / TargetTriple / "release" / "dasbook-service.exe";
             var sidecar = Tauri.ExternalBinPath(SrcTauri, "dasbook-service", TargetTriple);
-            sidecar.Parent!.CreateDirectory();
+            Directory.CreateDirectory(sidecar.Parent!.Value);
             File.Copy(built.Value, sidecar.Value, overwrite: true);
             // The path that used to live in a memo is now a typed expression in the build graph.
         });

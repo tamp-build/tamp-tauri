@@ -103,6 +103,27 @@ public sealed class TauriBuildSettings : TauriSettingsBase
     public TauriBuildSettings SetDebug(bool v = true) { Debug = v; return this; }
     public TauriBuildSettings AddFeature(string feature) { Features.Add(feature); return this; }
     public TauriBuildSettings AddFeatures(params string[] features) { Features.AddRange(features); return this; }
+
+    /// <summary>
+    /// Add the canonical Tauri custom-protocol cargo feature
+    /// (<c>tauri/custom-protocol</c>). Without it, a release-built Tauri shell
+    /// silently runs in dev mode at runtime — a notoriously expensive bug class
+    /// to diagnose because everything compiles, signs, and packages fine.
+    /// Idempotent — calling multiple times adds the feature only once.
+    /// </summary>
+    /// <remarks>
+    /// Uses the workspace-qualified form <c>tauri/custom-protocol</c> which
+    /// works regardless of whether the consuming crate is the workspace root
+    /// or a workspace member. For non-workspace projects where the unqualified
+    /// <c>custom-protocol</c> is sufficient, call <see cref="AddFeature"/>
+    /// directly with that value.
+    /// </remarks>
+    public TauriBuildSettings EnableCustomProtocol()
+    {
+        const string Feature = "tauri/custom-protocol";
+        if (!Features.Contains(Feature, StringComparer.Ordinal)) Features.Add(Feature);
+        return this;
+    }
     public TauriBuildSettings SetBin(string? name) { Bin = name; return this; }
     public TauriBuildSettings SetRunner(string? runner) { Runner = runner; return this; }
 
@@ -162,15 +183,129 @@ public sealed class TauriIconSettings : TauriSettingsBase
     }
 }
 
-// `tauri signer generate` and `tauri signer sign` are intentionally NOT typed in v0.1.0.
-// Both verbs need to pass a key password to the spawned process, which requires either:
-//   (a) Tamp.Tauri.V2 on Tamp.Core's InternalsVisibleTo list (to Reveal() the password
-//       into an env var like TAURI_SIGNING_PRIVATE_KEY_PASSWORD), OR
-//   (b) emitting the password on the CLI directly (visible to /proc; bad shape).
-// DasBook (the v0.1.0 canary) doesn't sign updater artifacts so it's not blocking.
-// Filed as TAM-190 for the 0.2.0 wave once the InternalsVisibleTo grant is in place.
-// Adopters who need signing now can use Tauri.Raw(tool, "signer", "generate", ...) and
-// manage TAURI_SIGNING_PRIVATE_KEY_PASSWORD on their own env.
+// ────────────────────────────────────────────────────────────────────────────
+//  Signer (TAM-190 — landed in 0.2.0)
+//
+//  Tauri's updater signing relies on a minisign-style key pair. Two verbs:
+//    `tauri signer generate -w <path>`  produces <path> (private) + <path>.pub
+//    `tauri signer sign -k <key> <file>` writes <file>.sig alongside the artifact
+//
+//  Both verbs read the key password from the TAURI_SIGNING_PRIVATE_KEY_PASSWORD
+//  env var. We route the Secret-typed password through Environment, NEVER the
+//  CLI flag — keeping it off the process arg table is the whole point of the
+//  Secret type, and Tauri's own docs prefer the env path.
+//
+//  Originally deferred from 0.1.0 because Secret.Reveal() was internal and
+//  required InternalsVisibleTo. Tamp.Core 1.6.0 made Reveal() public + TAMP004-
+//  analyzer-gated; the *Settings class-name suffix here is the canonical approved
+//  context, so no IVT entry is needed.
+// ────────────────────────────────────────────────────────────────────────────
+
+/// <summary>
+/// Settings for <c>tauri signer generate</c> — produce a minisign key pair for use with
+/// Tauri's updater. Writes the private key to <see cref="WriteKeysPath"/> and the public
+/// key to <c>&lt;path&gt;.pub</c>.
+/// </summary>
+public sealed class TauriSignerGenerateSettings : TauriSettingsBase
+{
+    /// <summary>Path to write the private key (<c>-w / --write-keys</c>). Public key goes to <c>&lt;path&gt;.pub</c>.</summary>
+    public string? WriteKeysPath { get; set; }
+
+    /// <summary>Force-overwrite an existing key file (<c>-f / --force</c>).</summary>
+    public bool Force { get; set; }
+
+    /// <summary>
+    /// Password protecting the private key. Routed via the <c>TAURI_SIGNING_PRIVATE_KEY_PASSWORD</c>
+    /// environment variable, not via a CLI flag. <see cref="Secret"/>-typed so the value is masked
+    /// in Tamp's process trace and never appears in argument lists.
+    /// </summary>
+    public Secret? Password { get; set; }
+
+    /// <summary>No-password mode (<c>--no-password</c>). Mutually exclusive with <see cref="Password"/>.</summary>
+    public bool NoPassword { get; set; }
+
+    public TauriSignerGenerateSettings SetWriteKeysPath(string path) { WriteKeysPath = path; return this; }
+    public TauriSignerGenerateSettings SetForce(bool v = true) { Force = v; return this; }
+    public TauriSignerGenerateSettings SetPassword(Secret secret) { Password = secret; return this; }
+    public TauriSignerGenerateSettings SetNoPassword(bool v = true) { NoPassword = v; return this; }
+
+    protected override IEnumerable<Secret> CollectSecrets() =>
+        Password is null ? Array.Empty<Secret>() : new[] { Password };
+
+    protected override IEnumerable<string> BuildVerbArguments()
+    {
+        if (string.IsNullOrEmpty(WriteKeysPath))
+            throw new InvalidOperationException(
+                "WriteKeysPath is required for `tauri signer generate` — set via SetWriteKeysPath.");
+        if (Password is not null && NoPassword)
+            throw new InvalidOperationException(
+                "Password and NoPassword are mutually exclusive — pick one.");
+
+        // Route the password into the env vars dictionary BEFORE the base materializes the plan.
+        // ToCommandPlan() copies EnvironmentVariables into the returned CommandPlan; mutating
+        // the dict here is the seam.
+        if (Password is not null)
+            EnvironmentVariables["TAURI_SIGNING_PRIVATE_KEY_PASSWORD"] = Password.Reveal();
+
+        yield return "signer";
+        yield return "generate";
+        yield return "-w";
+        yield return WriteKeysPath!;
+        if (Force) yield return "-f";
+        if (NoPassword) yield return "--no-password";
+    }
+}
+
+/// <summary>
+/// Settings for <c>tauri signer sign</c> — sign an artifact with a previously-generated minisign
+/// private key, producing <c>&lt;file&gt;.sig</c> next to it.
+/// </summary>
+public sealed class TauriSignerSignSettings : TauriSettingsBase
+{
+    /// <summary>The file to sign (positional argument).</summary>
+    public string? File { get; set; }
+
+    /// <summary>Path to the private key, or the inline base64 key body (<c>-k / --private-key</c>).</summary>
+    public string? PrivateKey { get; set; }
+
+    /// <summary>
+    /// Password protecting the private key. Routed via <c>TAURI_SIGNING_PRIVATE_KEY_PASSWORD</c>
+    /// — never via the CLI flag, even though <c>tauri signer sign</c> accepts <c>-p</c>; the env
+    /// path keeps the value off the process arg table.
+    /// </summary>
+    public Secret? Password { get; set; }
+
+    /// <summary>Write a fresh signature even if one already exists (<c>-f / --force</c>).</summary>
+    public bool Force { get; set; }
+
+    public TauriSignerSignSettings SetFile(string path) { File = path; return this; }
+    public TauriSignerSignSettings SetPrivateKey(string keyOrPath) { PrivateKey = keyOrPath; return this; }
+    public TauriSignerSignSettings SetPassword(Secret secret) { Password = secret; return this; }
+    public TauriSignerSignSettings SetForce(bool v = true) { Force = v; return this; }
+
+    protected override IEnumerable<Secret> CollectSecrets() =>
+        Password is null ? Array.Empty<Secret>() : new[] { Password };
+
+    protected override IEnumerable<string> BuildVerbArguments()
+    {
+        if (string.IsNullOrEmpty(File))
+            throw new InvalidOperationException(
+                "File is required for `tauri signer sign` — set via SetFile.");
+        if (string.IsNullOrEmpty(PrivateKey))
+            throw new InvalidOperationException(
+                "PrivateKey is required for `tauri signer sign` — set via SetPrivateKey (file path or inline base64).");
+
+        if (Password is not null)
+            EnvironmentVariables["TAURI_SIGNING_PRIVATE_KEY_PASSWORD"] = Password.Reveal();
+
+        yield return "signer";
+        yield return "sign";
+        yield return "-k";
+        yield return PrivateKey!;
+        if (Force) yield return "-f";
+        yield return File!;
+    }
+}
 
 /// <summary>Settings for <c>tauri migrate</c> — migrate a Tauri v1 project to v2.</summary>
 public sealed class TauriMigrateSettings : TauriSettingsBase

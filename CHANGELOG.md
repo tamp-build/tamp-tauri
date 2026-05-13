@@ -5,6 +5,57 @@ All notable changes to **Tamp.Tauri.V2** are recorded here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/);
 versions follow [SemVer](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.0] — pending — typed `tauri signer` verbs (TAM-190) + `EnableCustomProtocol()` (TAM-201)
+
+### Added — `EnableCustomProtocol()` convenience (TAM-201)
+
+- **`TauriBuildSettings.EnableCustomProtocol()`** — adds the canonical
+  workspace-qualified Tauri cargo feature `tauri/custom-protocol`. Idempotent
+  (re-calling does not duplicate). Without this feature, a release-built Tauri
+  shell silently runs in dev mode at runtime — an expensive bug class to
+  diagnose because compile/sign/package all succeed.
+
+  ```csharp
+  Tauri.Build(TauriCli, s => s
+      .SetTarget("x86_64-pc-windows-msvc")
+      .AddBundles("msi", "nsis")
+      .EnableCustomProtocol());        // formerly: .AddFeature("tauri/custom-protocol")
+  ```
+
+  Filed from the DasBook canary (2026-05-13). The functional surface always
+  existed via `AddFeature(...)` / `AddFeatures(...)`; this method is
+  ergonomics + typo-avoidance + documents the bug class in xmldoc.
+
+  4 new unit tests in `TauriTests`: feature added correctly, idempotence,
+  composition with other features, `Same`-instance return for chaining.
+
+### Added — typed `tauri signer` verbs (TAM-190)
+
+- **`Tauri.Signer.Generate(...)`** — `tauri signer generate -w <path>`. Produces
+  a minisign key pair for use with Tauri's updater. `SetWriteKeysPath(path)`
+  required. `SetForce()` for overwrite. `SetPassword(Secret)` routes the key
+  password via the `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` environment variable —
+  never via CLI flag, never on the process arg table. `SetNoPassword()` for
+  unprotected key flows; mutually exclusive with `SetPassword`.
+
+- **`Tauri.Signer.Sign(...)`** — `tauri signer sign -k <key> <file>`. Signs an
+  artifact and writes `<file>.sig` next to it. `SetFile(path)` and
+  `SetPrivateKey(keyOrPath)` required. `SetPassword(Secret)` routed via env var
+  the same way. `SetForce()` to overwrite an existing signature.
+
+Both verbs originally deferred from 0.1.0 because `Secret.Reveal()` required
+`InternalsVisibleTo` on Tamp.Core. Tamp.Core 1.6.0 made `Reveal()` public +
+TAMP004-analyzer-gated; the `*Settings` class-name suffix here is the canonical
+approved context, so no IVT entry was ever needed. The deferral became a no-op
+once 1.6.0 shipped — TAM-190 picked it up cleanly.
+
+### Tests
+
+- 11 new unit tests in `TauriTests`: WriteKeysPath required, force flag,
+  password → env routing (and never argv), Password ⊕ NoPassword mutual
+  exclusion, NoPassword standalone, sign requires File + PrivateKey, sign
+  emits `-k` + positional file, sign force flag, sign password → env routing.
+
 ## [0.1.0] - 2026-05-13
 
 ### Added
