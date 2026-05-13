@@ -1,0 +1,26 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFrameworks>net8.0;net9.0;net10.0</TargetFrameworks>
+    <RootNamespace>Tamp.Tauri.V2</RootNamespace>
+    <AssemblyName>Tamp.Tauri.V2</AssemblyName>
+  </PropertyGroup>
+
+  <PropertyGroup Label="Package">
+    <PackageId>Tamp.Tauri.V2</PackageId>
+    <Description>Wrapper for the Tauri 2.x CLI (@tauri-apps/cli). Verbs: Build (with bundle selection + target-triple), Info, Icon (PNG -> platform icon set generation), Signer (key generation + signing), Migrate (v1 -> v2). Includes a static ExternalBinPath helper that computes the sidecar staging path per Tauri externalBin contract — the file-path lives in the build graph, not in a memo.</Description>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <IsPackable>true</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <None Include="..\..\README.md" Pack="true" PackagePath="\" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="$(TampCorePath)" Condition="'$(TampCoreMode)' == 'project'" />
+    <PackageReference Include="Tamp.Core" Condition="'$(TampCoreMode)' == 'package'" />
+    <PackageReference Include="Microsoft.SourceLink.GitHub" PrivateAssets="All" />
+  </ItemGroup>
+
+</Project>
