@@ -137,6 +137,27 @@ This finds `node_modules/.bin/tauri(.cmd)` for npm-installed projects. Alternati
 
 The wrapper doesn't opine on which path you choose; it just invokes the resolved Tool.
 
+## Bypassing `Tauri.Build()` — `CargoBuildSettings.AsTauriShell()` (0.2.1+)
+
+`tauri build` is a wrapper around `cargo build` against the Tauri shell crate, with its own bundling step appended. Some cargo flags don't surface to tauri-cli — most notably `--profile <name>` (used in production when default `release` triggers a compiler bug like the MSVC 14.50 fat-LTO crash that hit DasBook).
+
+When you need cargo-only knobs, the adopter pattern is to bypass `Tauri.Build()` and configure cargo directly:
+
+```csharp
+[FromPath("cargo")] readonly Tool CargoBin = null!;
+
+Target BuildDesktop => _ => _
+    .Executes(() => Cargo.Build(CargoBin, s => s
+        .SetWorkingDirectory(SrcTauri)        // run cargo against src-tauri/
+        .SetProfile("fast-release")            // custom profile for the LTO-crash workaround
+        .AsTauriShell()                        // adds tauri/custom-protocol idempotently
+        .SetLocked()));
+```
+
+`AsTauriShell()` is the cargo-side mirror of `TauriBuildSettings.EnableCustomProtocol()` (from 0.2.0). Without the `tauri/custom-protocol` feature, the release-built binary silently runs in dev mode at runtime — compile and sign succeed, but the distributed app fails on first launch. This helper makes the feature unforgettable for adopters going the cargo-direct route.
+
+The extension lives in `Tamp.Tauri.V2` (this package) but extends a type from `Tamp.Cargo`. `Tamp.Tauri.V2 >= 0.2.1` declares `Tamp.Cargo >= 0.2.0` as a transitive dep, so it's available without a separate `dotnet add package` step.
+
 ## Sibling packages
 
 - [`Tamp.Cargo`](https://github.com/tamp-build/tamp-cargo) — Rust toolchain. The canonical paired wrapper for Tauri's Rust side.

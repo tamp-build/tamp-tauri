@@ -20,6 +20,8 @@
   <ItemGroup>
     <ProjectReference Include="$(TampCorePath)" Condition="'$(TampCoreMode)' == 'project'" />
     <PackageReference Include="Tamp.Core" Condition="'$(TampCoreMode)' == 'package'" />
+    <ProjectReference Include="$(TampCargoPath)" Condition="'$(TampCargoMode)' == 'project'" />
+    <PackageReference Include="Tamp.Cargo" Condition="'$(TampCargoMode)' == 'package'" />
     <PackageReference Include="Microsoft.SourceLink.GitHub" PrivateAssets="All" />
   </ItemGroup>
 

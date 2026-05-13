@@ -31,8 +31,13 @@
     <TampCorePath Condition="'$(TampCorePath)' == ''">$(MSBuildThisFileDirectory)..\tamp\src\Tamp.Core\Tamp.Core.csproj</TampCorePath>
   </PropertyGroup>
 
+  <PropertyGroup Label="Tamp.Cargo dependency mode (TAM-205 — AsTauriShell extension on CargoBuildSettings)">
+    <TampCargoMode Condition="'$(TampCargoMode)' == ''">project</TampCargoMode>
+    <TampCargoPath Condition="'$(TampCargoPath)' == ''">$(MSBuildThisFileDirectory)..\tamp-cargo\src\Tamp.Cargo\Tamp.Cargo.csproj</TampCargoPath>
+  </PropertyGroup>
+
   <PropertyGroup Label="Tamp central version">
-    <Version>0.2.0</Version>
+    <Version>0.2.1</Version>
   </PropertyGroup>
 
 </Project>

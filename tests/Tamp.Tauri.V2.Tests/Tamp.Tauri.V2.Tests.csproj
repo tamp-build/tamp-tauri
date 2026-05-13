@@ -17,6 +17,8 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\Tamp.Tauri.V2\Tamp.Tauri.V2.csproj" />
+    <ProjectReference Include="$(TampCargoPath)" Condition="'$(TampCargoMode)' == 'project'" />
+    <PackageReference Include="Tamp.Cargo" Condition="'$(TampCargoMode)' == 'package'" />
   </ItemGroup>
 
 </Project>

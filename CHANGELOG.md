@@ -5,6 +5,56 @@ All notable changes to **Tamp.Tauri.V2** are recorded here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/);
 versions follow [SemVer](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.1] — pending — `CargoBuildSettings.AsTauriShell()` cargo-side helper (TAM-205)
+
+### Added
+
+- **`CargoBuildSettings.AsTauriShell()`** — cross-package extension method
+  (defined in `Tamp.Tauri.V2`, extends `Tamp.Cargo.CargoBuildSettings`) that
+  idempotently adds the workspace-qualified `tauri/custom-protocol` cargo
+  feature. Closes the loop for adopters who bypass `Tauri.Build(...)` to
+  access cargo-only knobs (custom profiles, linker overrides) that
+  tauri-cli doesn't surface to its inner cargo invocation.
+
+  ```csharp
+  Cargo.Build(CargoBin, s => s
+      .SetWorkingDirectory(SrcTauri)
+      .SetProfile("fast-release")     // tauri-cli doesn't expose --profile
+      .AsTauriShell()                  // adds tauri/custom-protocol idempotently
+      .SetLocked());
+  ```
+
+  Without `tauri/custom-protocol`, the release-built Tauri shell silently
+  runs in dev mode at runtime — a notoriously expensive bug class because
+  compile / sign / package all succeed but the distributed binary fails
+  to launch correctly. `AsTauriShell` is the cargo-side mirror of
+  `TauriBuildSettings.EnableCustomProtocol()` (from 0.2.0).
+
+### Dependencies
+
+- `Tamp.Tauri.V2` now depends on `Tamp.Cargo` (>= 0.2.0). Adopters using
+  `Tamp.Tauri.V2` will pick up `Tamp.Cargo` transitively. The cross-package
+  reference is justified — adopters using Tauri almost always pair it with
+  Cargo, and the `AsTauriShell` extension is intrinsically Tauri-flavored
+  even though it operates on a Cargo type.
+
+### Why
+
+DasBook canary friction batch #3 #8 (2026-05-13). DasBook needed
+`--profile fast-release` because of an MSVC 14.50 fat-LTO crash; tauri-cli
+doesn't surface `--profile` for its inner cargo invocation, so they
+bypassed `Tauri.Build()` and went straight to `Cargo.Build(CargoBin, s =>
+...)`. The bypass lost access to the `EnableCustomProtocol()` we shipped
+in 0.2.0 specifically for them.
+
+### Tests
+
+- 7 new tests in `TauriCargoExtensionsTests` covering: feature added,
+  idempotency (multiple calls = single feature entry), composition with
+  adopter-added features (order preserved), no duplication when feature
+  was added manually first, return-same-instance for chaining, null guard,
+  full DasBook-style pipeline composition.
+
 ## [0.2.0] — pending — typed `tauri signer` verbs (TAM-190) + `EnableCustomProtocol()` (TAM-201)
 
 ### Added — `EnableCustomProtocol()` convenience (TAM-201)
