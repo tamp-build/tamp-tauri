@@ -50,7 +50,7 @@ public static class TauriCargoExtensions
     /// </code>
     /// <para>
     /// Idempotent — re-applying does not duplicate the feature in the
-    /// <see cref="CargoBuildSettings.Features"/> list.
+    /// <c>CargoBuildSettings.Features</c> list.
     /// </para>
     /// </remarks>
     public static CargoBuildSettings AsTauriShell(this CargoBuildSettings settings)
